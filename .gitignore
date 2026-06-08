@@ -1,0 +1,26 @@
+# OS/editor noise
+.DS_Store
+Thumbs.db
+*.swp
+*.swo
+
+# Logs and temp files
+*.log
+*.tmp
+*.temp
+tmp/
+.tmp/
+.cache/
+
+# Generated/build artifacts
+dist/
+build/
+out/
+coverage/
+node_modules/
+
+# Local environment
+.env
+.env.*
+!.env.example
+
