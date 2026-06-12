@@ -11,7 +11,21 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - name: Validate connector scaffold
-        run: |
-          test -f README.md
-          test -d connectors
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - name: Install dependencies
+        run: npm ci
+      - name: Build, test, and validate connectors
+        run: npm run check
+      - name: Verify package artifact contents
+        run: npm run package:check
+      - name: Pack connector artifact
+        run: npm pack --json
+      - name: Upload connector package artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: opensoha-connectors-package
+          path: opensoha-connectors-*.tgz
+          if-no-files-found: error
