@@ -17,6 +17,7 @@ dist/
 dist-test/
 build/
 out/
+graphify-out/
 coverage/
 node_modules/
 
