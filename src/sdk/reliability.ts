@@ -245,7 +245,7 @@ export class FileRetryQueue implements RetryQueue {
       updatedAt: now.toISOString(),
       nextAttemptAt: input.nextAttemptAt,
       attempts: input.attempts,
-      error: input.error,
+      error: redactValue(input.error) as RetryQueueEntry["error"],
       input: redactValue(input.input)
     };
     if (input.requestId) {
@@ -291,13 +291,20 @@ export class FileRetryQueue implements RetryQueue {
       throw error;
     }
     const parsed = JSON.parse(raw) as { entries?: RetryQueueEntry[] };
+    let needsPersist = false;
     for (const entry of parsed.entries ?? []) {
       if (entry && typeof entry.id === "string") {
-        this.entries.push(entry);
+        const safeEntry = redactValue(entry) as RetryQueueEntry;
+        needsPersist ||= JSON.stringify(safeEntry) !== JSON.stringify(entry);
+        this.entries.push(safeEntry);
       }
     }
     while (this.entries.length > this.maxEntries) {
       this.entries.shift();
+      needsPersist = true;
+    }
+    if (needsPersist) {
+      this.persist();
     }
   }
 
@@ -324,7 +331,7 @@ export class MemoryDeadLetterQueue implements DeadLetterQueue {
       connectorId: input.connectorId,
       action: input.action,
       recordedAt: (input.now ?? new Date()).toISOString(),
-      error: input.error,
+      error: redactValue(input.error) as DeadLetterEntry["error"],
       input: redactValue(input.input)
     };
     if (input.requestId) {
@@ -358,7 +365,7 @@ export class FileDeadLetterQueue implements DeadLetterQueue {
       connectorId: input.connectorId,
       action: input.action,
       recordedAt: (input.now ?? new Date()).toISOString(),
-      error: input.error,
+      error: redactValue(input.error) as DeadLetterEntry["error"],
       input: redactValue(input.input)
     };
     if (input.requestId) {
@@ -387,13 +394,20 @@ export class FileDeadLetterQueue implements DeadLetterQueue {
       throw error;
     }
     const parsed = JSON.parse(raw) as { entries?: DeadLetterEntry[] };
+    let needsPersist = false;
     for (const entry of parsed.entries ?? []) {
       if (entry && typeof entry.id === "string") {
-        this.entries.push(entry);
+        const safeEntry = redactValue(entry) as DeadLetterEntry;
+        needsPersist ||= JSON.stringify(safeEntry) !== JSON.stringify(entry);
+        this.entries.push(safeEntry);
       }
     }
     while (this.entries.length > this.maxEntries) {
       this.entries.shift();
+      needsPersist = true;
+    }
+    if (needsPersist) {
+      this.persist();
     }
   }
 

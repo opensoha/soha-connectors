@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { mkdtemp } from "node:fs/promises";
+import { mkdtemp, readFile, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { test } from "node:test";
@@ -30,7 +30,7 @@ test("file dead letter queue persists redacted entries and honors max size", asy
     requestId: "request-1",
     error: {
       code: "rate_limited",
-      message: "retry later",
+      message: "retry later Authorization=Bearer dead-letter-secret",
       retryable: true
     },
     input: {
@@ -43,6 +43,7 @@ test("file dead letter queue persists redacted entries and honors max size", asy
     text: "hello",
     token: "[REDACTED]"
   });
+  assert.equal(queue.list()[0]?.error.message, "retry later Authorization=[REDACTED]");
 
   queue.record({
     connectorId: "feishu",
@@ -50,7 +51,7 @@ test("file dead letter queue persists redacted entries and honors max size", asy
     requestId: "request-2",
     error: {
       code: "feishu_api_error",
-      message: "temporary",
+      message: "temporary token=retry-secret",
       retryable: true
     },
     input: {
@@ -64,6 +65,7 @@ test("file dead letter queue persists redacted entries and honors max size", asy
   assert.equal(entries.length, 1);
   assert.equal(entries[0]?.requestId, "request-2");
   assert.deepEqual(entries[0]?.input, { text: "hello" });
+  assert.equal(entries[0]?.error.message, "temporary token=[REDACTED]");
 });
 
 test("file retry queue persists due entries and supports completion", async () => {
@@ -79,7 +81,7 @@ test("file retry queue persists due entries and supports completion", async () =
     nextAttemptAt: "2026-06-12T00:00:05.000Z",
     error: {
       code: "feishu_api_error",
-      message: "temporary",
+      message: "temporary token=retry-secret",
       retryable: true
     },
     input: {
@@ -98,6 +100,61 @@ test("file retry queue persists due entries and supports completion", async () =
     text: "hello",
     token: "[REDACTED]"
   });
+  assert.equal(due[0]?.error.message, "temporary token=[REDACTED]");
   assert.equal(reloaded.complete(entry.id), true);
   assert.equal(new FileRetryQueue(file, 10).list().length, 0);
+});
+
+test("file queues sanitize legacy entries when loading", async () => {
+  const dir = await mkdtemp(path.join(os.tmpdir(), "soha-connectors-legacy-queue-"));
+  const retryFile = path.join(dir, "retry.json");
+  const deadLetterFile = path.join(dir, "dead-letter.json");
+  const error = {
+    code: "connector_error",
+    message: "Authorization=Bearer legacy-bearer",
+    retryable: true
+  };
+
+  await writeFile(
+    retryFile,
+    JSON.stringify({
+      entries: [
+        {
+          id: "feishu:send:retry:1",
+          connectorId: "feishu",
+          action: "send",
+          createdAt: "2026-06-12T00:00:00.000Z",
+          updatedAt: "2026-06-12T00:00:00.000Z",
+          nextAttemptAt: "2026-06-12T00:00:05.000Z",
+          attempts: 1,
+          error,
+          input: { passwd: "legacy-password" }
+        }
+      ]
+    })
+  );
+  await writeFile(
+    deadLetterFile,
+    JSON.stringify({
+      entries: [
+        {
+          id: "feishu:send:1",
+          connectorId: "feishu",
+          action: "send",
+          recordedAt: "2026-06-12T00:00:00.000Z",
+          error,
+          input: { pass: "legacy-pass" }
+        }
+      ]
+    })
+  );
+
+  assert.equal(new FileRetryQueue(retryFile).list()[0]?.error.message, "Authorization=[REDACTED]");
+  assert.deepEqual(new FileRetryQueue(retryFile).list()[0]?.input, { passwd: "[REDACTED]" });
+  assert.deepEqual(new FileDeadLetterQueue(deadLetterFile).list()[0]?.input, { pass: "[REDACTED]" });
+
+  const persisted = `${await readFile(retryFile, "utf8")} ${await readFile(deadLetterFile, "utf8")}`;
+  assert.equal(persisted.includes("legacy-bearer"), false);
+  assert.equal(persisted.includes("legacy-password"), false);
+  assert.equal(persisted.includes("legacy-pass"), false);
 });
