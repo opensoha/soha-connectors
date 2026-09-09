@@ -1,11 +1,6 @@
 ---
 name: soha-connectors
-description: >-
-  Implement or review the TypeScript connector SDK, connector runtimes,
-  manifests, registries, event envelopes, reliability controls, tests, and
-  release artifacts in `soha-connectors`. Use when adding a connector,
-  changing webhook or action behavior, or evolving connector lifecycle and
-  package contracts.
+description: Change or review the standalone connector SDK, provider runtimes, webhooks, manifests, and releases in soha-connectors.
 ---
 
 # Soha Connectors
@@ -17,8 +12,8 @@ provider boundaries.
 
 ## Workflow
 
-1. Read `src/sdk/**`, the connector manifest, registry entry, capability
-   matrix, tests, and operations runbook before changing a runtime.
+1. Inspect the affected connector and its SDK callers. Read its manifest and capability
+   matrix for capability changes, and the operations runbook for operational behavior.
 2. Put reusable lifecycle, HTTP, reliability, logging, and redaction behavior
    in `src/sdk`; keep provider behavior in `src/connectors/<provider>`.
 3. Keep `connectors/<provider>/connector.manifest.json`,
