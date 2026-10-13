@@ -1,10 +1,14 @@
 import { createServer, type IncomingHttpHeaders, type IncomingMessage, type Server, type ServerResponse } from "node:http";
+import { timingSafeEqual } from "node:crypto";
+
+import { parseCredentialDelivery, redactCredentialResult } from "./credentials.js";
 
 import type {
   Connector,
   ConnectorActionRequest,
   ConnectorActionResult,
   ConnectorContext,
+  ConnectorCredentialDelivery,
   ConnectorEvent,
   ConnectorLogger,
   ConnectorWebhookResponse
@@ -163,7 +167,7 @@ async function routeRequest<TConfig>(input: {
   }
 
   if (method === "GET" && url.pathname === "/dead-letter") {
-    if (!authorizeAction(input.request.headers, input.actionToken)) {
+    if (!authorizeAction(input.request, input.actionToken)) {
       writeJson(input.response, 401, unauthorizedBody());
       return;
     }
@@ -174,7 +178,7 @@ async function routeRequest<TConfig>(input: {
   }
 
   if (method === "GET" && url.pathname === "/retry-queue") {
-    if (!authorizeAction(input.request.headers, input.actionToken)) {
+    if (!authorizeAction(input.request, input.actionToken)) {
       writeJson(input.response, 401, unauthorizedBody());
       return;
     }
@@ -327,7 +331,7 @@ async function handleActionRequest<TConfig>(
   },
   url: URL
 ): Promise<void> {
-  if (!authorizeAction(input.request.headers, input.actionToken)) {
+  if (!authorizeAction(input.request, input.actionToken)) {
     writeJson(input.response, 401, unauthorizedBody());
     return;
   }
@@ -346,15 +350,54 @@ async function handleActionRequest<TConfig>(
     actionRequest.requestId = requestId;
   }
 
-  const result = await input.connector.dispatchAction(actionRequest);
-  input.logger?.info("connector action handled", {
+  let credentials: ConnectorCredentialDelivery | undefined;
+  try {
+    credentials = parseCredentialDelivery(body, actionRequest.action, input.connector.manifest.actions.find((action) => action.name === actionRequest.action));
+  } catch {
+    writeJson(input.response, 400, { ok: false, error: { code: "invalid_credential_delivery", message: "credential protocol, declaration or lifetime is invalid", retryable: false } });
+    return;
+  }
+  const result = credentials
+    ? await dispatchCredentialAction(input.connector, actionRequest, credentials, input.response)
+    : await input.connector.dispatchAction(actionRequest);
+  if (input.response.destroyed) return;
+  const fields = {
     connectorId: input.connector.id,
     action: actionRequest.action,
-    requestId,
+    ...(credentials ? {} : { requestId }),
     ok: result.ok,
     errorCode: result.error?.code
-  });
+  };
+  input.logger?.info("connector action handled", credentials ? redactCredentialResult(fields, credentials) as Record<string, unknown> : fields);
   writeJson(input.response, statusForActionResult(result), result);
+}
+
+async function dispatchCredentialAction<TConfig>(
+  connector: Connector<TConfig>, request: ConnectorActionRequest,
+  credentials: ConnectorCredentialDelivery, response: ServerResponse
+): Promise<ConnectorActionResult> {
+  const controller = new AbortController();
+  const abort = (): void => controller.abort();
+  const lifetime = Date.parse(credentials.expiresAt) - Date.now();
+  if (lifetime <= 0 || response.destroyed) {
+    return { ok: false, error: { code: "credential_action_canceled", message: "credential action is no longer active", retryable: false } };
+  }
+  const timeout = setTimeout(abort, lifetime);
+  response.once("close", abort);
+  request.credentials = credentials;
+  request.signal = controller.signal;
+  try {
+    const aborted = new Promise<never>((_resolve, reject) => controller.signal.addEventListener("abort", () => reject(new Error("credential action canceled")), { once: true }));
+    const result = await Promise.race([connector.dispatchAction(request), aborted]);
+    if (!result || typeof result.ok !== "boolean") throw new Error("invalid action result");
+    return redactCredentialResult(result, credentials) as ConnectorActionResult;
+  } catch {
+    return { ok: false, error: { code: controller.signal.aborted ? "credential_action_canceled" : "credential_action_failed", message: "credential action did not complete", retryable: false } };
+  } finally {
+    clearTimeout(timeout);
+    response.removeListener("close", abort);
+    controller.abort();
+  }
 }
 
 function writeConnectorResponse(response: ServerResponse, result: ConnectorWebhookResponse): void {
@@ -387,8 +430,8 @@ async function readJsonBody(request: IncomingMessage, maxBodyBytes: number): Pro
   try {
     const parsed = JSON.parse(body.toString("utf8")) as unknown;
     return parsed && typeof parsed === "object" && !Array.isArray(parsed) ? (parsed as Record<string, unknown>) : {};
-  } catch (error) {
-    throw new Error(`invalid JSON request body: ${(error as Error).message}`);
+  } catch {
+    throw new Error("invalid JSON request body");
   }
 }
 
@@ -418,12 +461,16 @@ function writeJson(response: ServerResponse, status: number, body: unknown, head
   response.end(JSON.stringify(body));
 }
 
-function authorizeAction(headers: IncomingHttpHeaders, actionToken: string | undefined): boolean {
+function authorizeAction(request: IncomingMessage, actionToken: string | undefined): boolean {
   if (!actionToken) {
     return false;
   }
-  const authorization = headerValue(headers.authorization);
-  return authorization === `Bearer ${actionToken}`;
+  const count = request.rawHeaders.filter((value, index) => index % 2 === 0 && value.toLowerCase() === "authorization").length;
+  const authorization = headerValue(request.headers.authorization);
+  if (count !== 1 || !authorization) return false;
+  const actual = Buffer.from(authorization);
+  const expected = Buffer.from(`Bearer ${actionToken}`);
+  return actual.length === expected.length && timingSafeEqual(actual, expected);
 }
 
 function unauthorizedBody(): Record<string, unknown> {

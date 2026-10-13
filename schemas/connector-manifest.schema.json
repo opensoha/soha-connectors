@@ -33,7 +33,11 @@
       "pattern": "^\\d+\\.\\d+\\.\\d+(?:[-+][0-9A-Za-z.-]+)?$"
     },
     "status": {
-      "enum": ["planned", "experimental", "stable"]
+      "enum": [
+        "planned",
+        "experimental",
+        "stable"
+      ]
     },
     "description": {
       "type": "string",
@@ -42,7 +46,11 @@
     "runtime": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["language", "node", "entrypoint"],
+      "required": [
+        "language",
+        "node",
+        "entrypoint"
+      ],
       "properties": {
         "language": {
           "const": "typescript"
@@ -62,7 +70,12 @@
       "minItems": 4,
       "uniqueItems": true,
       "items": {
-        "enum": ["created", "configured", "started", "stopped"]
+        "enum": [
+          "created",
+          "configured",
+          "started",
+          "stopped"
+        ]
       }
     },
     "config": {
@@ -107,14 +120,24 @@
     "configField": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["name", "type", "required", "description"],
+      "required": [
+        "name",
+        "type",
+        "required",
+        "description"
+      ],
       "properties": {
         "name": {
           "type": "string",
           "minLength": 1
         },
         "type": {
-          "enum": ["string", "boolean", "number", "secret"]
+          "enum": [
+            "string",
+            "boolean",
+            "number",
+            "secret"
+          ]
         },
         "required": {
           "type": "boolean"
@@ -128,14 +151,22 @@
           "pattern": "^[A-Z][A-Z0-9_]*$"
         },
         "default": {
-          "type": ["string", "number", "boolean"]
+          "type": [
+            "string",
+            "number",
+            "boolean"
+          ]
         }
       }
     },
     "secretRef": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["env", "required", "purpose"],
+      "required": [
+        "env",
+        "required",
+        "purpose"
+      ],
       "properties": {
         "env": {
           "type": "string",
@@ -153,14 +184,22 @@
     "capability": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["name", "direction", "description"],
+      "required": [
+        "name",
+        "direction",
+        "description"
+      ],
       "properties": {
         "name": {
           "type": "string",
           "minLength": 1
         },
         "direction": {
-          "enum": ["inbound", "outbound", "bidirectional"]
+          "enum": [
+            "inbound",
+            "outbound",
+            "bidirectional"
+          ]
         },
         "description": {
           "type": "string",
@@ -171,7 +210,11 @@
     "permission": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["key", "description", "required"],
+      "required": [
+        "key",
+        "description",
+        "required"
+      ],
       "properties": {
         "key": {
           "type": "string",
@@ -189,7 +232,11 @@
     "action": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["name", "description", "inputSchema"],
+      "required": [
+        "name",
+        "description",
+        "inputSchema"
+      ],
       "properties": {
         "name": {
           "type": "string",
@@ -201,6 +248,40 @@
         },
         "inputSchema": {
           "type": "object"
+        },
+        "credentialProtocol": {
+          "const": "opensoha.dev/connector-action/v1",
+          "description": "Opt-in support for per-call delivery, not a requirement for every action call. Without credentials the existing envelope remains valid; actions requiring authentication must reject missing credentials themselves."
+        },
+        "credentialAliases": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 16,
+          "uniqueItems": true,
+          "items": {
+            "type": "string",
+            "pattern": "^[A-Z][A-Z0-9_]{0,63}$"
+          }
+        }
+      },
+      "dependentRequired": {
+        "credentialProtocol": [
+          "credentialAliases"
+        ],
+        "credentialAliases": [
+          "credentialProtocol"
+        ]
+      },
+      "if": {
+        "required": [
+          "credentialProtocol"
+        ]
+      },
+      "then": {
+        "properties": {
+          "name": {
+            "maxLength": 128
+          }
         }
       }
     }

@@ -13,8 +13,10 @@ cloud operations logic into this repository.
 - TypeScript on Node.js 20+.
 - Runtime dependencies are currently zero; connectors use built-in `fetch`,
   `crypto`, and `node:test`.
-- Build output is generated into `dist/`; test output is generated into
-  `dist-test/`.
+- Build output is generated into `dist/`. `npm test` compiles into its own
+  temporary directory and removes it on success or failure by default; set
+  `OPENSOHA_KEEP_VERIFY_ARTIFACTS=1` to retain it for inspection. Explicit
+  `npm run build:test` keeps `dist-test/` for inspection.
 
 ```bash
 npm install
@@ -39,6 +41,7 @@ soha-connectors/
   schemas/
     connector-manifest.schema.json
     connector-event-envelope.schema.json
+    connector-action.schema.json
   scripts/
     validate.mjs
   src/
@@ -89,6 +92,22 @@ copy is kept for package compatibility. The wrapper is
 `{ connectorId: string, events: ConnectorEvent[] }`. Each `ConnectorEvent`
 contains `id`, `type`, `source`, `occurredAt`, provider-specific `payload`, and
 optional `subject`.
+
+## Per-call credentials
+
+The HTTP SDK supports `opensoha.dev/connector-action/v1` only for actions
+explicitly declaring `credentialProtocol` and `credentialAliases`. Core pins and
+authorizes references before delivery over authenticated HTTPS or loopback. The
+SDK supplies invocation-local `request.credentials` and a cooperative
+`request.signal`, rejects invalid/expired frames and late results, and masks known
+credential string material in results and errors. Plugins must honor cancellation
+and keep values out of logs, events, retry queues and persistent configuration.
+The declaration advertises support; calls without credentials retain the old
+envelope. Authenticated provider actions must reject missing credentials.
+
+Feishu does not opt into this protocol. HTTP/Git/Object knowledge fetch plugins
+are not implemented by this SDK feature. See
+[Core integration](docs/soha-core-integration.md#per-call-credential-envelope).
 
 ## Feishu Status
 

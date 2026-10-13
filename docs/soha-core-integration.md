@@ -78,6 +78,43 @@ The action endpoint accepts:
 
 `POST /actions` is also accepted when the body contains an `action` field.
 
+## Per-call Credential Envelope
+
+The canonical `soha-contracts/connectors/connector-action.schema.json` is mirrored
+at `schemas/connector-action.schema.json`. An action declares
+`credentialProtocol: "opensoha.dev/connector-action/v1"` and bounded
+`credentialAliases`, such as `["SOURCE"]`. This advertises support, not a
+requirement for calls without credentials. Actions requiring authentication must
+reject their absence themselves. Feishu does not declare this protocol.
+
+For an authorized credential-bearing invocation, Core sends the exact action in
+the path and envelope, ordinary `input`, and `credentials: { expiresAt, entries }`.
+Each alias entry contains an exact `soha://secrets/<id>/versions/<n>` reference
+and an invocation-local resolved `value`. Wire references do not authorize the
+caller; Core reuses Gateway authorization and binds the current principal and
+capability before sending. The SDK requires a single valid runtime Authorization
+header, a supported declaration and valid envelope before dispatch.
+
+Only authenticated HTTPS or loopback delivery is supported. Core disables
+redirects for credential-bearing actions. Frames are limited to 1 MiB canonical
+UTF-8 JSON, at most 16 entries, 64 KiB per value, and structured material with
+depth at most 16 and at most 64 distinct nonempty strings including keys. Expiry
+must be in the future and within two minutes; Core applies its existing ten
+second timeout, preserving an earlier caller deadline.
+
+The SDK supplies `request.credentials` and `request.signal`. Expiry or caller
+disconnect signals cancellation and rejects late results. This is cooperative:
+plugins must honor the signal and reconcile external effects. It cannot revoke
+credentials already received or stop a plugin ignoring the signal. Plugins must
+not persist values in global config, logs, events, results or retry queues. SDK
+errors and responses and Core outputs mask known raw and structured string
+material, including result keys. Conservative masking may hide matching business
+fields; it does not guarantee protection against encoded or obfuscated leakage.
+
+Old runtimes are rejected before values are sent. New runtimes must not silently
+substitute globally configured credentials. The current SDK implements transport
+and boundary validation, not HTTP/Git/Object source fetching.
+
 ## Soha Core Mapping
 
 | Concern | Integration point | Boundary |

@@ -33,6 +33,7 @@ for (const required of [
   "connectors/wecom/README.md",
   "schemas/connector-manifest.schema.json",
   "schemas/connector-event-envelope.schema.json",
+  "schemas/connector-action.schema.json",
   "scripts/validate.mjs"
 ]) {
   if (!files.has(required)) {

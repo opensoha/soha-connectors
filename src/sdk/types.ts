@@ -37,6 +37,15 @@ export interface ConnectorActionDefinition {
   name: string;
   description: string;
   inputSchema: Record<string, unknown>;
+  credentialProtocol?: typeof CONNECTOR_ACTION_PROTOCOL;
+  credentialAliases?: string[];
+}
+
+export const CONNECTOR_ACTION_PROTOCOL = "opensoha.dev/connector-action/v1";
+
+export interface ConnectorCredentialDelivery {
+  expiresAt: string;
+  entries: Record<string, { reference: string; value: string }>;
 }
 
 export interface ConnectorManifest {
@@ -93,6 +102,8 @@ export interface ConnectorActionRequest<Input = Record<string, unknown>> {
   input: Input;
   event?: ConnectorEvent;
   requestId?: string;
+  credentials?: ConnectorCredentialDelivery;
+  signal?: AbortSignal;
 }
 
 export interface ConnectorActionResult<Output = Record<string, unknown>> {

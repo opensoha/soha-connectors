@@ -21,7 +21,7 @@
           "name": "runtime.http.action_endpoint",
           "direction": "outbound",
           "status": "implemented",
-          "evidence": ["src/sdk/http.ts", "test/feishu-http-runtime.test.ts"]
+          "evidence": ["src/sdk/http.ts", "test/feishu-http-runtime.test.ts", "test/credential-delivery.test.ts"]
         },
         {
           "name": "runtime.config.env",
